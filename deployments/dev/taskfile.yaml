@@ -1,0 +1,76 @@
+version: '3'
+
+tasks:
+  config_postgres:
+    cmds:
+      - |
+        [ -f ~/.postgres.secrets ] || echo "POSTGRES_PASSWORD=$(openssl rand -base64 32)" > ~/.postgres.secrets
+        . ~/.postgres.secrets
+        kubectl delete secret postgres 2>/dev/null || echo "No postgres secret yet, creating..."
+        kubectl create secret generic postgres --from-literal=POSTGRES_PASSWORD=$POSTGRES_PASSWORD --from-literal=PGADMIN_PASSWORD=$PGADMIN_PASSWORD
+  init_keycloak_db:
+    cmds:
+      - |
+        [ -f ~/.keycloak.secrets ] || (
+            echo "KC_DB_PASSWORD=$(openssl rand -base64 32)" > ~/.keycloak.secrets;
+            echo "KEYCLOAK_ADMIN_PASSWORD=$(openssl rand -base64 32)" >> ~/.keycloak.secrets;
+        )
+        . ~/.keycloak.secrets
+
+        kubectl exec -i $(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}') -- psql -U postgres postgres <<EOF
+        drop database keycloak;
+        drop user keycloak;
+        create user keycloak with password '$KC_DB_PASSWORD';
+        alter user keycloak createdb;
+        EOF
+        kubectl exec -i $(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}') -- psql -U keycloak postgres <<EOF
+        create database keycloak;
+        EOF
+  config_keycloak:
+    cmds:
+      - |
+        cleanup() {
+          rm keycloak-env.sh
+        }
+
+        cat > keycloak-env.sh <<EOF
+        KEYCLOAK_ADMIN=keycloak
+        KC_DB=postgres
+        KC_DB_URL_HOST=postgres
+        KC_DB_URL_PORT=5432
+        KC_DB_URL_DATABASE=keycloak
+        KC_DB_USERNAME=keycloak
+        EOF
+
+        trap cleanup EXIT
+
+        kubectl delete configmap keycloak || echo "No configmap for keycloak yet. Creating..."
+        kubectl create configmap keycloak --from-env-file=keycloak-env.sh
+        kubectl delete pod $(kubectl get pod -l app=keycloak -o jsonpath='{.items[0].metadata.name}') || echo "Keycloak is not running yet, nevermind..."
+
+        . ~/.keycloak.secrets
+        kubectl delete secret keycloak || echo "No secret for keycloak yet. Creating..."
+        kubectl create secret generic keycloak --from-literal=KEYCLOAK_ADMIN_PASSWORD=$KEYCLOAK_ADMIN_PASSWORD --from-literal=KC_DB_PASSWORD=$KC_DB_PASSWORD
+  init_app_db:
+    cmds:
+      - |
+        password=$(kubectl get secrets/postgres --template={{.data.POSTGRES_PASSWORD}})
+        kubectl exec -i $(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}') -- psql -U postgres postgres <<EOF
+        create user iconrepo with password 'iconrepo';
+        alter user iconrepo createdb;
+        EOF
+        kubectl exec -i $(kubectl get pod -l app=postgres -o jsonpath='{.items[0].metadata.name}') -- psql -U iconrepo postgres <<EOF
+        create database iconrepo;
+        EOF
+  recreate_app_secrets:
+    cmds:
+      - |
+        . ~/.iconrepo.secrets
+        kubectl delete secret iconrepo 2>/dev/null || echo "Error while deleting secret 'iconrepo', probably didn't exist yet. Creating it..."
+        kubectl create secret generic iconrepo \
+          --from-literal=OIDC_CLIENT_SECRET=$OIDC_CLIENT_SECRET \
+          --from-literal=GITLAB_ACCESS_TOKEN=$GITLAB_ACCESS_TOKEN \
+          --from-literal=AWS_ACCESS_KEY_ID="kalap" \
+          --from-literal=AWS_SECRET_ACCESS_KEY="kabat"
+        kubectl delete pod $(kubectl get pod -l app=iconrepo -o jsonpath='{.items[0].metadata.name}')
+
