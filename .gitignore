@@ -1,6 +1,7 @@
 .vscode
 .DS_Store
 /node_modules/
+/web/dist/
 /build/
 /docker/dist/
 /log
@@ -10,6 +11,7 @@
 /output
 /tmp/config
 /**/tmp/
+.task/
 .terraform/
 .terraform.lock*
 terraform.tfstate*
