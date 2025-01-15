@@ -1,7 +1,5 @@
 package authn
 
-import "fmt"
-
 type UserID struct {
 	IDInDomain string
 }
@@ -12,5 +10,5 @@ func (userId *UserID) Equal(idInDomain, domainID string) bool {
 }
 
 func (userId *UserID) String() string {
-	return fmt.Sprintf("%s", userId.IDInDomain)
+	return userId.IDInDomain
 }
