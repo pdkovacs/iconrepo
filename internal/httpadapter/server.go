@@ -206,39 +206,25 @@ func RequestLogger(g *gin.Context) {
 	r := g.Request
 	g.Request = r.WithContext(l.WithContext(r.Context()))
 
-	lrw := newLoggingResponseWriter(g.Writer)
-
 	defer func() {
+		statusCode := g.Writer.Status()
+
 		panicVal := recover()
 		if panicVal != nil {
-			lrw.statusCode = http.StatusInternalServerError // ensure that the status code is updated
-			panic(panicVal)                                 // continue panicking
+			statusCode = http.StatusInternalServerError // ensure that the status code is updated
+			panic(panicVal)                             // continue panicking
 		}
 		l.
 			Info().
 			Str("method", g.Request.Method).
 			Str("url", g.Request.URL.RequestURI()).
 			Str("user_agent", g.Request.UserAgent()).
-			Int("status_code", lrw.statusCode).
+			Int("status_code", statusCode).
 			Dur("elapsed_ms", time.Since(start)).
-			Msg("incoming request")
+			Msg("incoming request finished")
 	}()
 
 	g.Next()
-}
-
-type loggingResponseWriter struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func newLoggingResponseWriter(w http.ResponseWriter) *loggingResponseWriter {
-	return &loggingResponseWriter{w, http.StatusOK}
-}
-
-func (lrw *loggingResponseWriter) WriteHeader(code int) {
-	lrw.statusCode = code
-	lrw.ResponseWriter.WriteHeader(code)
 }
 
 // TODO:
