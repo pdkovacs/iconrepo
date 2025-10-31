@@ -1,13 +1,11 @@
-quiet: False
-disable-version-string: True
-with-expecter: True
-mockname: "{{.InterfaceName}}"
-filename: "{{.MockName}}.go"
-outpkg: mocks
+structname: "{{.InterfaceName}}"
+pkgname: mocks
+template: testify
+template-data:
+  unroll-variadic: true
 packages:
   iconrepo/internal/app/services:
     config:
-      dir: "test/mocks"
+      dir: test/mocks
     interfaces:
-      Repository:
-        
+      Repository: {}
