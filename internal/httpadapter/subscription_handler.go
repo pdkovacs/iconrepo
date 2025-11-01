@@ -7,9 +7,9 @@ import (
 	"iconrepo/internal/app/services"
 	"net/http"
 
+	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
-	"nhooyr.io/websocket"
 )
 
 type socketAdapter struct {
