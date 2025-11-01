@@ -28,7 +28,7 @@ func (sa *socketAdapter) Write(ctx context.Context, msg string) error {
 	return sa.wsConn.Write(ctx, websocket.MessageText, []byte(msg))
 }
 
-func subscriptionHandler(getUserInfo func(c *gin.Context) authr.UserInfo, ns *services.Notification, loadBalancerAddress string) gin.HandlerFunc {
+func subscriptionHandler(ns *services.Notification, loadBalancerAddress string) gin.HandlerFunc {
 	return func(g *gin.Context) {
 		logger := zerolog.Ctx(g.Request.Context()).With().Str("function", "subscriptionHandler").Logger()
 
@@ -44,7 +44,12 @@ func subscriptionHandler(getUserInfo func(c *gin.Context) authr.UserInfo, ns *se
 
 		defer wsConn.Close(websocket.StatusInternalError, "")
 
-		userInfo := getUserInfo(g)
+		userInfo, getUserInfoErr := authr.GetUserInfo(g.Request.Context())
+		if getUserInfoErr != nil {
+			logger.Error().Err(getUserInfoErr).Send()
+			g.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
 
 		curriedContext := wsConn.CloseRead(g.Request.Context())                                    // Clients wan't write to the WS.(?)
 		subscriptionError := ns.Subscribe(curriedContext, &socketAdapter{wsConn}, userInfo.UserId) // we block here until Error or Done

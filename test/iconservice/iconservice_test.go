@@ -2,7 +2,6 @@ package iconservice
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	_ "image/jpeg"
@@ -59,11 +58,12 @@ func (s *appTestSuite) SetupSuite() {
 
 func (s *appTestSuite) TestCreateIconNoPerm() {
 	testUser := createUserInfo(nil)
+	s.ctx = context.WithValue(s.ctx, authr.UserInfoCtxKey, testUser)
 	iconName := "test-icon"
 	iconfile := getTestIconfile()
 	mockRepo := mocks.Repository{}
 	api := services.NewIconService(&mockRepo)
-	_, err := api.CreateIcon(s.ctx, iconName, iconfile.Content, testUser)
+	_, err := api.CreateIcon(s.ctx, iconName, iconfile.Content)
 	s.Error(err)
 	s.ErrorIs(err, authr.ErrPermission)
 	mockRepo.AssertExpectations(s.t)
@@ -71,6 +71,7 @@ func (s *appTestSuite) TestCreateIconNoPerm() {
 
 func (s *appTestSuite) TestCreateIcon() {
 	testUser := createUserInfo([]authr.PermissionID{authr.CREATE_ICON})
+	s.ctx = context.WithValue(s.ctx, authr.UserInfoCtxKey, testUser)
 	iconName := "test-icon"
 	iconfile := getTestIconfile()
 	expectedResponseIcon := domain.Icon{
@@ -82,9 +83,9 @@ func (s *appTestSuite) TestCreateIcon() {
 		Iconfiles: []domain.Iconfile{iconfile},
 	}
 	mockRepo := mocks.Repository{}
-	mockRepo.On("CreateIcon", mock.AnythingOfType(fmt.Sprintf("%T", context.Background())), iconName, iconfile, testUser).Return(nil)
+	mockRepo.On("CreateIcon", mock.AnythingOfType("*context.valueCtx"), iconName, iconfile, testUser).Return(nil)
 	api := services.NewIconService(&mockRepo)
-	icon, err := api.CreateIcon(s.ctx, iconName, iconfile.Content, testUser)
+	icon, err := api.CreateIcon(s.ctx, iconName, iconfile.Content)
 	s.NoError(err)
 	s.Equal(expectedResponseIcon, icon)
 	mockRepo.AssertExpectations(s.t)

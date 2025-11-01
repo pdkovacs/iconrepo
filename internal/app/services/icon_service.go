@@ -56,9 +56,10 @@ func (service *IconService) DescribeIcon(ctx context.Context, iconName string) (
 	return icon, err
 }
 
-func (service *IconService) CreateIcon(ctx context.Context, iconName string, initialIconfileContent []byte, modifiedBy authr.UserInfo) (domain.Icon, error) {
+func (service *IconService) CreateIcon(ctx context.Context, iconName string, initialIconfileContent []byte) (domain.Icon, error) {
 	logger := logging.CreateMethodLogger(service.logger, "CreateIcon")
-	err := authr.HasRequiredPermissions(modifiedBy, []authr.PermissionID{authr.CREATE_ICON})
+
+	modifiedBy, err := authr.HasRequiredPermissions(ctx, []authr.PermissionID{authr.CREATE_ICON})
 	if err != nil {
 		return domain.Icon{}, fmt.Errorf("failed to create icon %v: %w", iconName, err)
 	}
@@ -104,9 +105,9 @@ func (service *IconService) GetIconfile(ctx context.Context, iconName string, ic
 	return content, nil
 }
 
-func (service *IconService) AddIconfile(ctx context.Context, iconName string, initialIconfileContent []byte, modifiedBy authr.UserInfo) (domain.IconfileDescriptor, error) {
+func (service *IconService) AddIconfile(ctx context.Context, iconName string, initialIconfileContent []byte) (domain.IconfileDescriptor, error) {
 	logger := logging.CreateMethodLogger(service.logger, "AddIconfile")
-	err := authr.HasRequiredPermissions(modifiedBy, []authr.PermissionID{
+	modifiedBy, err := authr.HasRequiredPermissions(ctx, []authr.PermissionID{
 		authr.UPDATE_ICON,
 		authr.ADD_ICONFILE,
 	})
@@ -138,16 +139,16 @@ func (service *IconService) AddIconfile(ctx context.Context, iconName string, in
 	return iconfile.IconfileDescriptor, nil
 }
 
-func (service *IconService) DeleteIcon(ctx context.Context, iconName string, modifiedBy authr.UserInfo) error {
-	err := authr.HasRequiredPermissions(modifiedBy, []authr.PermissionID{authr.REMOVE_ICON})
+func (service *IconService) DeleteIcon(ctx context.Context, iconName string) error {
+	modifiedBy, err := authr.HasRequiredPermissions(ctx, []authr.PermissionID{authr.REMOVE_ICON})
 	if err != nil {
 		return fmt.Errorf("not enough permissions to delete icon \"%v\" to : %w", iconName, err)
 	}
 	return service.Repository.DeleteIcon(ctx, iconName, modifiedBy)
 }
 
-func (service *IconService) DeleteIconfile(ctx context.Context, iconName string, iconfileDescriptor domain.IconfileDescriptor, modifiedBy authr.UserInfo) error {
-	err := authr.HasRequiredPermissions(modifiedBy, []authr.PermissionID{authr.REMOVE_ICONFILE})
+func (service *IconService) DeleteIconfile(ctx context.Context, iconName string, iconfileDescriptor domain.IconfileDescriptor) error {
+	modifiedBy, err := authr.HasRequiredPermissions(ctx, []authr.PermissionID{authr.REMOVE_ICONFILE})
 	if err != nil {
 		return fmt.Errorf("not enough permissions to delete icon \"%v\" to : %w", iconName, err)
 	}
@@ -158,8 +159,8 @@ func (service *IconService) GetTags(ctx context.Context) ([]string, error) {
 	return service.Repository.GetTags(ctx)
 }
 
-func (service *IconService) AddTag(ctx context.Context, iconName string, tag string, userInfo authr.UserInfo) error {
-	permErr := authr.HasRequiredPermissions(userInfo, []authr.PermissionID{authr.ADD_TAG})
+func (service *IconService) AddTag(ctx context.Context, iconName string, tag string) error {
+	userInfo, permErr := authr.HasRequiredPermissions(ctx, []authr.PermissionID{authr.ADD_TAG})
 	if permErr != nil {
 		return authr.ErrPermission
 	}
@@ -170,8 +171,8 @@ func (service *IconService) AddTag(ctx context.Context, iconName string, tag str
 	return nil
 }
 
-func (service *IconService) RemoveTag(ctx context.Context, iconName string, tag string, userInfo authr.UserInfo) error {
-	permErr := authr.HasRequiredPermissions(userInfo, []authr.PermissionID{authr.REMOVE_TAG})
+func (service *IconService) RemoveTag(ctx context.Context, iconName string, tag string) error {
+	userInfo, permErr := authr.HasRequiredPermissions(ctx, []authr.PermissionID{authr.REMOVE_TAG})
 	if permErr != nil {
 		return authr.ErrPermission
 	}

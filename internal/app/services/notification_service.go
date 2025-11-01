@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"iconrepo/internal/app/security/authn"
+	"iconrepo/internal/app/security/authr"
 	"iconrepo/internal/logging"
 	"sync"
 	"time"
@@ -113,7 +114,7 @@ func (ns *Notification) deleteSubscriber(s *subscriber) {
 // publish publishes the msg to all subscribers.
 // It never blocks and so messages to slow subscribers
 // are dropped.
-func (cs *Notification) Publish(ctx context.Context, msg NotificationMessage, initiator authn.UserID) {
+func (cs *Notification) Publish(ctx context.Context, msg NotificationMessage) {
 	logger := zerolog.Ctx(ctx).With().Str("unit", "notificationService").Str("method", "Publish").Logger()
 
 	cs.subscribersMu.Lock()
@@ -123,8 +124,11 @@ func (cs *Notification) Publish(ctx context.Context, msg NotificationMessage, in
 	cs.publishLimiter.Wait(ctx)
 
 	logger.Debug().Str("message", string(msg)).Int("subscriberCount", len(cs.subscribers)).Msg("starting to iterate on subscribers...")
+
+	userInfo, _ := authr.GetUserInfo(ctx)
+
 	for s := range cs.subscribers {
-		if s.userId == initiator {
+		if s.userId == userInfo.UserId {
 			continue
 		}
 		select {

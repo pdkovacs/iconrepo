@@ -2,6 +2,10 @@ package authr
 
 import "iconrepo/internal/app/security/authn"
 
+type CtxKey string
+
+const UserInfoCtxKey CtxKey = "userInfo"
+
 func GroupNamesToGroupIDs(groups []string) []GroupID {
 	memberIn := []GroupID{}
 	for _, group := range groups {

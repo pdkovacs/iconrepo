@@ -1,6 +1,7 @@
 package authr
 
 import (
+	"context"
 	"errors"
 	"fmt"
 )
@@ -45,7 +46,21 @@ func GetPermissionsForGroup(group GroupID) []PermissionID {
 
 var ErrPermission = errors.New("permission error")
 
-func HasRequiredPermissions(userInfo UserInfo, requiredPermissions []PermissionID) error {
+func GetUserInfo(ctx context.Context) (UserInfo, error) {
+
+	userInfoAny := ctx.Value(UserInfoCtxKey)
+	userInfo, ok := userInfoAny.(UserInfo)
+	if !ok {
+		return UserInfo{}, fmt.Errorf("failed extract userInfo from context. Found %T", userInfoAny)
+	}
+	return userInfo, nil
+}
+
+func HasRequiredPermissions(ctx context.Context, requiredPermissions []PermissionID) (UserInfo, error) {
+	userInfo, err := GetUserInfo(ctx)
+	if err != nil {
+		return UserInfo{}, err
+	}
 	for _, reqPerm := range requiredPermissions {
 		found := false
 		for _, uPerm := range userInfo.Permissions {
@@ -55,8 +70,8 @@ func HasRequiredPermissions(userInfo UserInfo, requiredPermissions []PermissionI
 			}
 		}
 		if !found {
-			return fmt.Errorf("not all of %v is included in %v granted to %v, %w", requiredPermissions, userInfo.Permissions, userInfo.UserId, ErrPermission)
+			return UserInfo{}, fmt.Errorf("not all of %v is included in %v granted to %v, %w", requiredPermissions, userInfo.Permissions, userInfo.UserId, ErrPermission)
 		}
 	}
-	return nil
+	return userInfo, nil
 }

@@ -7,9 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"iconrepo/internal/app/domain"
-	"iconrepo/internal/app/security/authn"
 	"iconrepo/internal/app/security/authr"
 	"iconrepo/internal/app/services"
+	"iconrepo/internal/logging"
 	"io"
 	"net/http"
 
@@ -82,12 +82,13 @@ func iconToResponseIcon(icon domain.Icon) IconDTO {
 
 func describeAllIcons(describeAllIcons func(ctx context.Context) ([]domain.IconDescriptor, error)) func(g *gin.Context) {
 	return func(g *gin.Context) {
-		logger := zerolog.Ctx(g.Request.Context()).With().Str("function", "describeAllIcons").Logger()
+		logger := zerolog.Ctx(g.Request.Context()).With().Str(logging.FunctionLogger, "describeAllIcons").Logger()
 
 		icons, err := describeAllIcons(g.Request.Context())
 		if err != nil {
 			logger.Error().Err(err).Send()
 			g.AbortWithStatus(http.StatusInternalServerError)
+			return
 		}
 		responseIcon := []IconDTO{}
 		for _, icon := range icons {
@@ -99,7 +100,7 @@ func describeAllIcons(describeAllIcons func(ctx context.Context) ([]domain.IconD
 
 func describeIcon(describeIcon func(ctx context.Context, iconName string) (domain.IconDescriptor, error)) func(g *gin.Context) {
 	return func(g *gin.Context) {
-		logger := zerolog.Ctx(g.Request.Context()).With().Str("function", "describeIcon").Logger()
+		logger := zerolog.Ctx(g.Request.Context()).With().Str(logging.FunctionLogger, "describeIcon").Logger()
 
 		iconName := g.Param("name")
 		icon, err := describeIcon(g.Request.Context(), iconName)
@@ -118,12 +119,11 @@ func describeIcon(describeIcon func(ctx context.Context, iconName string) (domai
 }
 
 func createIcon(
-	getUserInfo func(c *gin.Context) authr.UserInfo,
-	createIcon func(ctx context.Context, iconName string, initialIconfileContent []byte, modifiedBy authr.UserInfo) (domain.Icon, error),
-	publish func(ctx context.Context, msg services.NotificationMessage, initiator authn.UserID),
+	createIcon func(ctx context.Context, iconName string, initialIconfileContent []byte) (domain.Icon, error),
+	publish func(ctx context.Context, msg services.NotificationMessage),
 ) func(g *gin.Context) {
 	return func(g *gin.Context) {
-		logger := zerolog.Ctx(g.Request.Context()).With().Str("function", "createIcon").Logger()
+		logger := zerolog.Ctx(g.Request.Context()).With().Str(logging.FunctionLogger, "createIcon").Logger()
 
 		r := g.Request
 		r.ParseMultipartForm(32 << 20) // limit your max input length to 32MB
@@ -149,8 +149,7 @@ func createIcon(
 		defer buf.Reset()
 		logger.Info().Str("icon-name", iconName).Int("byte-count", buf.Len()).Msg("received icon")
 
-		authorInfo := getUserInfo(g)
-		icon, errCreate := createIcon(g.Request.Context(), iconName, buf.Bytes(), authorInfo)
+		icon, errCreate := createIcon(g.Request.Context(), iconName, buf.Bytes())
 		if errCreate != nil {
 			logger.Error().Str("icon-name", iconName).Err(errCreate).Msg("failed to create icon")
 			if errors.Is(errCreate, authr.ErrPermission) {
@@ -164,14 +163,14 @@ func createIcon(
 				return
 			}
 		}
-		publish(g.Request.Context(), services.NotifMsgIconCreated, authorInfo.UserId)
+		publish(g.Request.Context(), services.NotifMsgIconCreated)
 		g.JSON(201, iconToResponseIcon(icon))
 	}
 }
 
 func getIconfile(getIconfile func(ctx context.Context, iconName string, iconfile domain.IconfileDescriptor) ([]byte, error)) func(g *gin.Context) {
 	return func(g *gin.Context) {
-		logger := zerolog.Ctx(g.Request.Context()).With().Str("function", "getIconfile").Logger()
+		logger := zerolog.Ctx(g.Request.Context()).With().Str(logging.FunctionLogger, "getIconfile").Logger()
 
 		iconName := g.Param("name")
 		format := g.Param("format")
@@ -198,21 +197,19 @@ func getIconfile(getIconfile func(ctx context.Context, iconName string, iconfile
 }
 
 func addIconfile(
-	getUserInfo func(g *gin.Context) authr.UserInfo,
-	addIconfile func(ctx context.Context, iconName string, initialIconfileContent []byte, modifiedBy authr.UserInfo) (domain.IconfileDescriptor, error),
-	publish func(ctx context.Context, msg services.NotificationMessage, initiator authn.UserID),
+	addIconfile func(ctx context.Context, iconName string, initialIconfileContent []byte) (domain.IconfileDescriptor, error),
+	publish func(ctx context.Context, msg services.NotificationMessage),
 ) func(g *gin.Context) {
 	return func(g *gin.Context) {
-		logger := zerolog.Ctx(g.Request.Context()).With().Str("function", "addIconfile").Logger()
+		logger := zerolog.Ctx(g.Request.Context()).With().Str(logging.FunctionLogger, "addIconfile").Logger()
 
-		authorInfo := getUserInfo(g)
-
-		authrErr := authr.HasRequiredPermissions(
-			authorInfo,
+		_, authrErr := authr.HasRequiredPermissions(
+			g.Request.Context(),
 			[]authr.PermissionID{
 				authr.UPDATE_ICON,
 				authr.ADD_ICONFILE,
-			})
+			},
+		)
 		if authrErr != nil {
 			g.AbortWithStatus(http.StatusForbidden)
 			return
@@ -241,7 +238,7 @@ func addIconfile(
 		io.Copy(&buf, file)
 		logger.Info().Str("icon-name", iconName).Msg("received iconfile content")
 
-		iconfileDescriptor, errAdd := addIconfile(g.Request.Context(), iconName, buf.Bytes(), authorInfo)
+		iconfileDescriptor, errAdd := addIconfile(g.Request.Context(), iconName, buf.Bytes())
 		if errAdd != nil {
 			logger.Error().Err(errAdd).Str("icon-name", iconName).Msg("failed to add iconfile")
 			if errors.Is(errAdd, authr.ErrPermission) {
@@ -254,23 +251,21 @@ func addIconfile(
 				g.AbortWithStatus(http.StatusInternalServerError)
 			}
 		}
-		publish(g.Request.Context(), services.NotifMsgIconfileAdded, authorInfo.UserId)
+		publish(g.Request.Context(), services.NotifMsgIconfileAdded)
 		g.JSON(200, CreateIconPath(iconRootPath, iconName, iconfileDescriptor))
 		buf.Reset()
 	}
 }
 
 func deleteIcon(
-	getUserInfo func(g *gin.Context) authr.UserInfo,
-	deleteIcon func(ctx context.Context, iconName string, modifiedBy authr.UserInfo) error,
-	publish func(ctx context.Context, msg services.NotificationMessage, initiator authn.UserID),
+	deleteIcon func(ctx context.Context, iconName string) error,
+	publish func(ctx context.Context, msg services.NotificationMessage),
 ) func(g *gin.Context) {
 	return func(g *gin.Context) {
-		logger := zerolog.Ctx(g.Request.Context())
+		logger := zerolog.Ctx(g.Request.Context()).With().Str(logging.FunctionLogger, "deleteIcon").Logger()
 
-		authorInfo := getUserInfo(g)
 		iconName := g.Param("name")
-		deleteError := deleteIcon(g.Request.Context(), iconName, authorInfo)
+		deleteError := deleteIcon(g.Request.Context(), iconName)
 		if deleteError != nil {
 			if errors.Is(deleteError, authr.ErrPermission) {
 				g.AbortWithStatus(http.StatusForbidden)
@@ -280,25 +275,23 @@ func deleteIcon(
 			g.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
-		publish(g.Request.Context(), services.NotifMsgIconDeleted, authorInfo.UserId)
+		publish(g.Request.Context(), services.NotifMsgIconDeleted)
 		g.Status(204)
 	}
 }
 
 func deleteIconfile(
-	getUserInfo func(c *gin.Context) authr.UserInfo,
-	deleteIconfile func(ctx context.Context, iconName string, iconfile domain.IconfileDescriptor, modifiedBy authr.UserInfo) error,
-	publish func(ctx context.Context, msg services.NotificationMessage, initiator authn.UserID),
+	deleteIconfile func(ctx context.Context, iconName string, iconfile domain.IconfileDescriptor) error,
+	publish func(ctx context.Context, msg services.NotificationMessage),
 ) func(g *gin.Context) {
 	return func(g *gin.Context) {
-		logger := zerolog.Ctx(g.Request.Context()).With().Str("function", "deleteIconfile").Logger()
+		logger := zerolog.Ctx(g.Request.Context()).With().Str(logging.FunctionLogger, "deleteIconfile").Logger()
 
-		authorInfo := getUserInfo(g)
 		iconName := g.Param("name")
 		format := g.Param("format")
 		size := g.Param("size")
 		iconfileDescriptor := domain.IconfileDescriptor{Format: format, Size: size}
-		deleteError := deleteIconfile(g.Request.Context(), iconName, iconfileDescriptor, authorInfo)
+		deleteError := deleteIconfile(g.Request.Context(), iconName, iconfileDescriptor)
 		if deleteError != nil {
 			if errors.Is(deleteError, authr.ErrPermission) {
 				g.AbortWithStatus(http.StatusForbidden)
@@ -318,14 +311,14 @@ func deleteIconfile(
 			g.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
-		publish(g.Request.Context(), services.NotifMsgIconfileDeleted, authorInfo.UserId)
+		publish(g.Request.Context(), services.NotifMsgIconfileDeleted)
 		g.Status(204)
 	}
 }
 
 func getTags(getTags func(ctx context.Context) ([]string, error)) func(g *gin.Context) {
 	return func(g *gin.Context) {
-		logger := zerolog.Ctx(g.Request.Context()).With().Str("function", "getTags").Logger()
+		logger := zerolog.Ctx(g.Request.Context()).With().Str(logging.FunctionLogger, "getTags").Logger()
 
 		tags, serviceError := getTags(g.Request.Context())
 		if serviceError != nil {
@@ -342,13 +335,18 @@ type AddServiceRequestData struct {
 }
 
 func addTag(
-	getUserInfo func(c *gin.Context) authr.UserInfo,
-	addTag func(ctx context.Context, iconName string, tag string, modifiedBy authr.UserInfo) error,
+	addTag func(ctx context.Context, iconName string, tag string) error,
 ) func(g *gin.Context) {
 	return func(g *gin.Context) {
-		logger := zerolog.Ctx(g.Request.Context()).With().Str("function", "addTag").Logger()
+		logger := zerolog.Ctx(g.Request.Context()).With().Str(logging.FunctionLogger, "addTag").Logger()
 
-		userInfo := getUserInfo(g)
+		_, getUserInfoErr := authr.GetUserInfo(g.Request.Context())
+		if getUserInfoErr != nil {
+			logger.Error().Err(getUserInfoErr).Send()
+			g.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
+
 		iconName := g.Param("name")
 
 		jsonData, readBodyErr := io.ReadAll(g.Request.Body)
@@ -366,7 +364,7 @@ func addTag(
 			return
 		}
 
-		serviceError := addTag(g.Request.Context(), iconName, tag, userInfo)
+		serviceError := addTag(g.Request.Context(), iconName, tag)
 		if serviceError != nil {
 			if errors.Is(serviceError, authr.ErrPermission) {
 				logger.Info().Err(serviceError).Str("icon-name", iconName).Str("tag", tag).Msg("icon not found to add/remove tag")
@@ -387,16 +385,14 @@ func addTag(
 }
 
 func removeTag(
-	getUserInfo func(g *gin.Context) authr.UserInfo,
-	removeTag func(ctx context.Context, iconName string, tag string, modifiedBy authr.UserInfo) error,
+	removeTag func(ctx context.Context, iconName string, tag string) error,
 ) func(g *gin.Context) {
 	return func(g *gin.Context) {
-		logger := zerolog.Ctx(g.Request.Context()).With().Str("function", "removeTag").Logger()
+		logger := zerolog.Ctx(g.Request.Context()).With().Str(logging.FunctionLogger, "removeTag").Logger()
 
-		userInfo := getUserInfo(g)
 		iconName := g.Param("name")
 		tag := g.Param("tag")
-		serviceError := removeTag(g.Request.Context(), iconName, tag, userInfo)
+		serviceError := removeTag(g.Request.Context(), iconName, tag)
 		if serviceError != nil {
 			if errors.Is(serviceError, authr.ErrPermission) {
 				logger.Info().Err(serviceError).Str("icon-name", iconName).Str("tag", tag).Msg("icon not found to add/remove tag")

@@ -1,6 +1,7 @@
 package httpadapter
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -16,13 +17,12 @@ import (
 
 const forwardedUserInfoKey = "forwarded-user-info"
 
-func checkOIDCProxyAuthentication(authRService services.AuthorizationService, log zerolog.Logger) func(c *gin.Context) {
-	logger := logging.CreateMethodLogger(log, "checkOIDCProxyAuthentication")
-
+func checkOIDCProxyAuthentication(authRService services.AuthorizationService) func(c *gin.Context) {
 	return func(c *gin.Context) {
+		logger := zerolog.Ctx(c.Request.Context()).With().Str(logging.MethodLogger, "checkOIDCProxyAuthentication").Logger()
 
 		abort := func(details string) {
-			logger.Debug().Str("path", c.Request.URL.Path).Str("details", details).Msg("Request for %v not authenticated")
+			logger.Debug().Str("details", details).Msg("Request for %v not authenticated")
 			c.AbortWithStatus(401)
 		}
 
@@ -70,5 +70,9 @@ func checkOIDCProxyAuthentication(authRService services.AuthorizationService, lo
 			Permissions: authRService.GetPermissionsForGroups(groupIds),
 		}
 		c.Set(forwardedUserInfoKey, userInfo)
+
+		r := c.Request
+		ctx := context.WithValue(r.Context(), authr.UserInfoCtxKey, userInfo)
+		c.Request = r.WithContext(ctx)
 	}
 }

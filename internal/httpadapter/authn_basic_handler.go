@@ -1,10 +1,12 @@
 package httpadapter
 
 import (
+	"context"
 	"encoding/base64"
 	"strings"
 
 	"iconrepo/internal/app/security/authn"
+	"iconrepo/internal/app/security/authr"
 	"iconrepo/internal/app/services"
 	"iconrepo/internal/config"
 
@@ -41,12 +43,19 @@ func checkBasicAuthentication(options basicConfig, userService services.UserServ
 	return func(c *gin.Context) {
 		logger := zerolog.Ctx(c.Request.Context())
 		authenticated := false
+		var userInfo authr.UserInfo
 
 		session := sessions.Default(c)
 		user := session.Get(UserKey)
 		logger.Debug().Bool("isAuthenticated", authenticated).Send()
 		if user != nil {
-			authenticated = true
+			sessionUser, ok := user.(SessionData)
+			if ok {
+				authenticated = true
+				userInfo = sessionUser.UserInfo
+			} else {
+				logger.Error().Msgf("failed to extract SessionData from context: found %T", user)
+			}
 		} else {
 			authnHeaderValue, hasHeader := c.Request.Header["Authorization"]
 			logger.Debug().Bool("hasHeader", hasHeader).Send()
@@ -60,7 +69,7 @@ func checkBasicAuthentication(options basicConfig, userService services.UserServ
 						logger.Debug().Str("currentUserName", pc.Username).Send()
 						if pc.Username == username && pc.Password == password {
 							userId := authn.LocalDomain.CreateUserID(username)
-							userInfo := userService.GetUserInfo(userId)
+							userInfo = userService.GetUserInfo(userId)
 							session.Set(UserKey, SessionData{userInfo})
 							session.Save()
 							authenticated = true
@@ -73,6 +82,9 @@ func checkBasicAuthentication(options basicConfig, userService services.UserServ
 		session.Save()
 
 		if authenticated {
+			r := c.Request
+			ctx := context.WithValue(r.Context(), authr.UserInfoCtxKey, userInfo)
+			c.Request = r.WithContext(ctx)
 			c.Next()
 		} else {
 			c.Header("WWW-Authenticate", "Basic")

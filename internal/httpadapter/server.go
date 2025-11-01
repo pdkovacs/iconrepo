@@ -5,7 +5,6 @@ import (
 	"encoding/gob"
 	"fmt"
 	"iconrepo/internal/app/security/authn"
-	"iconrepo/internal/app/security/authr"
 	"iconrepo/internal/app/services"
 	"iconrepo/internal/config"
 	"iconrepo/internal/logging"
@@ -140,20 +139,12 @@ func (s *server) initEndpoints(options config.Options) *gin.Engine {
 
 	logger.Debug().Msg("Creating authorized group....")
 
-	mustGetUserInfo := func(c *gin.Context) authr.UserInfo {
-		userInfo, getUserInfoErr := getUserInfo(options.AuthenticationType)(c)
-		if getUserInfoErr != nil {
-			panic(fmt.Sprintf("failed to get user-info %s", c.Request.URL))
-		}
-		return userInfo
-	}
-
 	authorizedGroup := rootEngine.Group("/")
 	{
 		notifService := services.CreateNotificationService(logger)
 
 		logger.Debug().Str("authn-type", string(options.AuthenticationType)).Msg("Setting up authorized group")
-		authorizedGroup.Use(authenticationCheck(options, &userService, s.logger.With().Logger()))
+		authorizedGroup.Use(authenticationCheck(options, &userService))
 
 		rootEngine.GET("/config", func(c *gin.Context) {
 			c.JSON(200, clientConfig{IdPLogoutURL: options.OIDCLogoutURL})
@@ -161,7 +152,7 @@ func (s *server) initEndpoints(options config.Options) *gin.Engine {
 		logger.Debug().Msg("Setting up logout handler")
 		authorizedGroup.POST("/logout", logout(options))
 
-		authorizedGroup.GET("/subscribe", subscriptionHandler(mustGetUserInfo, notifService, options.LoadBalancerAddress))
+		authorizedGroup.GET("/subscribe", subscriptionHandler(notifService, options.LoadBalancerAddress))
 
 		authorizedGroup.GET("/user", userInfoHandler(options.AuthenticationType, userService))
 
@@ -172,16 +163,16 @@ func (s *server) initEndpoints(options config.Options) *gin.Engine {
 
 		authorizedGroup.GET("/icon", describeAllIcons(s.api.DescribeAllIcons))
 		authorizedGroup.GET("/icon/:name", describeIcon(s.api.DescribeIcon))
-		authorizedGroup.POST("/icon", createIcon(mustGetUserInfo, s.api.CreateIcon, notifService.Publish))
-		authorizedGroup.DELETE("/icon/:name", deleteIcon(mustGetUserInfo, s.api.DeleteIcon, notifService.Publish))
+		authorizedGroup.POST("/icon", createIcon(s.api.CreateIcon, notifService.Publish))
+		authorizedGroup.DELETE("/icon/:name", deleteIcon(s.api.DeleteIcon, notifService.Publish))
 
-		authorizedGroup.POST("/icon/:name", addIconfile(mustGetUserInfo, s.api.AddIconfile, notifService.Publish))
+		authorizedGroup.POST("/icon/:name", addIconfile(s.api.AddIconfile, notifService.Publish))
 		authorizedGroup.GET("/icon/:name/format/:format/size/:size", getIconfile(s.api.GetIconfile))
-		authorizedGroup.DELETE("/icon/:name/format/:format/size/:size", deleteIconfile(mustGetUserInfo, s.api.DeleteIconfile, notifService.Publish))
+		authorizedGroup.DELETE("/icon/:name/format/:format/size/:size", deleteIconfile(s.api.DeleteIconfile, notifService.Publish))
 
 		authorizedGroup.GET("/tag", getTags(s.api.GetTags))
-		authorizedGroup.POST("/icon/:name/tag", addTag(mustGetUserInfo, s.api.AddTag))
-		authorizedGroup.DELETE("/icon/:name/tag/:tag", removeTag(mustGetUserInfo, s.api.RemoveTag))
+		authorizedGroup.POST("/icon/:name/tag", addTag(s.api.AddTag))
+		authorizedGroup.DELETE("/icon/:name/tag/:tag", removeTag(s.api.RemoveTag))
 	}
 
 	return rootEngine

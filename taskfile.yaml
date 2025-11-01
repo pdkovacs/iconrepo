@@ -7,7 +7,6 @@ version: "3"
 
 vars:
   BACKEND_SOURCE_HOME: $PWD
-  BACKEND: "iconrepo-backend"
   # includes UI in the executable
   APP: iconrepo
   UI_DIST: '{{ .UI_DIST | default "../iconrepo-ui/dist" }}'
@@ -26,28 +25,18 @@ tasks:
       - task: test-seq
       - go test -parallel 1 -v -timeout 60s ./test/iconservice/...
   test-server:
-    sources:
-      - "{{.BACKEND}}"
     cmds:
       - go test -parallel 1 -v -timeout 120s ./test/server/...
   test-repos:
-    sources:
-      - "{{.BACKEND}}"
     cmds:
       - go test -parallel 1 -v -timeout 60s ./test/repositories/...
   test-seq:
-    sources:
-      - "{{.BACKEND}}"
     cmds:
       - go test -parallel 1 -v -timeout 60s ./test/seq/...
   test-single: # a sample test-case is used, replace it with whichever other test cases you need to run
-    sources:
-      - "{{.BACKEND}}"
     cmds:
-      - go test -parallel 1 -v -timeout 10s ./... -run '^TestAuthBackDoorTestSuite$$' -testify.m TestBackDoorMustntBeAvailableByDefault
+      - go test -parallel 1 -v -timeout 10s ./... -run '^TestIconServiceTestSuite$$' -testify.m TestCreateIcon
   test-dynamodb:
-    sources:
-      - "{{.BACKEND}}"
     cmds:
       - |
         $TEST_OPTIONS DYNAMODB_ONLY=yes AWS_REGION=eu-west-1 go test -parallel 1 -v -timeout 40s ./test/repositories/indexing/...

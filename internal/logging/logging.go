@@ -104,10 +104,11 @@ func Get() zerolog.Logger {
 }
 
 const (
-	HandlerLogger string = "handler"
-	ServiceLogger string = "service"
-	UnitLogger    string = "unit"
-	MethodLogger  string = "method"
+	HandlerLogger  string = "handler"
+	ServiceLogger  string = "service"
+	UnitLogger     string = "unit"
+	FunctionLogger string = "function"
+	MethodLogger   string = "method"
 )
 
 func CreateUnitLogger(logger zerolog.Logger, unitName string) zerolog.Logger {

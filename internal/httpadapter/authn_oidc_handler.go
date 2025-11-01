@@ -22,7 +22,7 @@ const authenticationRefererSessionKey = "authentication-referer"
 
 type HandleOAuth2Callback func(c *gin.Context, storedState string) (*claims, error)
 
-func checkOIDCAuthentication(log zerolog.Logger) func(c *gin.Context) {
+func checkOIDCAuthentication() func(c *gin.Context) {
 
 	return func(c *gin.Context) {
 		logger := zerolog.Ctx(c.Request.Context())
@@ -37,6 +37,18 @@ func checkOIDCAuthentication(log zerolog.Logger) func(c *gin.Context) {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
+
+		sessionUser, ok := user.(SessionData)
+		if !ok {
+			logger.Error().Msgf("failed to extract SessionData from context: found %T", user)
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+
+		userInfo := sessionUser.UserInfo
+		r := c.Request
+		ctx := context.WithValue(r.Context(), authr.UserInfoCtxKey, userInfo)
+		c.Request = r.WithContext(ctx)
 	}
 }
 

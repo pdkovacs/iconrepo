@@ -58,14 +58,14 @@ func getUserInfo(authnType authn.AuthenticationScheme) func(c *gin.Context) (aut
 	}
 }
 
-func authenticationCheck(options config.Options, userService *services.UserService, log zerolog.Logger) gin.HandlerFunc {
+func authenticationCheck(options config.Options, userService *services.UserService) gin.HandlerFunc {
 	switch options.AuthenticationType {
 	case authn.SchemeBasic:
 		return checkBasicAuthentication(basicConfig{PasswordCredentialsList: options.PasswordCredentials}, *userService)
 	case authn.SchemeOIDC:
-		return checkOIDCAuthentication(log)
+		return checkOIDCAuthentication()
 	case authn.SchemeOIDCProxy:
-		return checkOIDCProxyAuthentication(userService.AuthorizationService, log)
+		return checkOIDCProxyAuthentication(userService.AuthorizationService)
 	}
 	panic(fmt.Sprintf("unexpected authentication type: %v", options.AuthenticationType))
 }
@@ -84,8 +84,7 @@ func authentication(options config.Options, userService *services.UserService, l
 			serverURLContext:      options.ServerURLContext,
 		}, userService, options.UsernameCookie, config.UseCORS(options), log)
 	case authn.SchemeOIDCProxy:
-		return func(g *gin.Context) {
-		}
+		return func(g *gin.Context) {}
 	}
 	return nil
 }
