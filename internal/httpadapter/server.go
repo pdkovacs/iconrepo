@@ -61,7 +61,7 @@ func (s *server) start(portRequested int, r http.Handler, ready func(port int, s
 		if err != nil {
 			panic(err)
 		}
-		ready(portAsInt, s.Stop)
+		ready(portAsInt, s.stop)
 	}
 
 	http.Serve(s.listener, r)
@@ -178,8 +178,8 @@ func (s *server) initEndpoints(options config.Options) *gin.Engine {
 	return rootEngine
 }
 
-// Stop kills the listener
-func (s *server) Stop() {
+// stop kills the listener
+func (s *server) stop() {
 	logger := logging.CreateMethodLogger(s.logger, "ListenerKiller")
 	error := s.listener.Close()
 	if error != nil {
